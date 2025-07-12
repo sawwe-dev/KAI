@@ -5,9 +5,21 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+
 /** TODO: 
  * Meter memoria (chat entero?, si es muy largo resumir)
  */
+
+typedef struct{
+    char *role;
+    char *content;
+} Message;
+
+typedef struct{
+    Message *msgs;
+    int count;
+    int capacity;
+}History;
 
 void clean_string(char *str);
 
@@ -19,7 +31,7 @@ size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp){
 
 void get_user_input(char *user_input);
 
-void build_prompt(char *prompt, char *user_input);
+void build_prompt(char *prompt, char *user_input, char *chat_summary);
 
 CURL *init_model(char *json_request, char *json_response, struct curl_slist *headers);
 
@@ -31,18 +43,68 @@ void print_response(char *response);
 
 void add_to_history(char *user, char *response, FILE *f);
 
+void summarize_chat(History *h, char *chat_summary, char *json_request, char *json_response, CURL *curl);
+
+void free_history(History *hist){
+    int i;
+    for(i = 0; i<hist->count; i++){
+        free(hist->msgs[i].role);
+        free(hist->msgs[i].content);
+    }
+    free(hist->msgs);
+}
+
+void add_message(History *hist, char *role, char *content){
+    if(hist->count >= hist->capacity){
+        hist->capacity *= 2;
+        hist->msgs = realloc(hist->msgs, hist->capacity * sizeof(Message));
+        if(!hist->msgs){
+            perror("Error reallocating chat history");
+            return;
+        }
+    }
+
+    hist->msgs[hist->count].role = strdup(role);
+    hist->msgs[hist->count].content = strdup(content);
+    hist->count++;
+}
+
+void dump_history(History *h, FILE *f){
+    int i;
+    for(i = 0; i<h->count; i++){
+        fprintf(f, "[%s]: %s", h->msgs[i].role, h->msgs[i].content);
+    }
+}
+
 int main(){
     char user_input[MAX_USR_INPUT] = "";
     char prompt[MAX_PROMPT];
     char json_response[MAX_JSON];
     char json_request[MAX_JSON];
     char parsed_response[MAX_JSON];
+    char chat_summary[MAX_SUM] = "";
 
     CURL *curl;
     CURLcode res;
     struct curl_slist *headers = NULL;
 
     FILE *f;
+
+    History *hist;
+
+    hist = malloc(sizeof(History));
+    if(!hist){
+        perror("Error allocating memory for chat history.");
+        return EXIT_FAILURE;
+    }
+    
+    hist->count = 0;
+    hist->capacity = INIT_HIST_CAP;
+    hist->msgs = malloc(hist->capacity * sizeof(Message));
+    if(!hist->msgs){
+        perror("Error allocating memory for chat history.");
+        return EXIT_FAILURE;
+    }
 
     curl = init_model(json_request, json_response, headers);
     if(!curl){
@@ -60,7 +122,8 @@ int main(){
 
     while(strcmp(user_input, "exit")){
         get_user_input(user_input);
-        build_prompt(prompt, user_input);
+        add_message(hist, "USER", user_input);
+        build_prompt(prompt, user_input, chat_summary);
         res = call_model(curl, json_request, prompt);
         if(res != CURLE_OK){
             fprintf(stderr, "Curl petition failed: %s\n", curl_easy_strerror(res));
@@ -68,13 +131,15 @@ int main(){
         }
         parse_response(json_response, parsed_response);
         print_response(parsed_response);
-        add_to_history(user_input, parsed_response, f);
+        add_message(hist, "KAI", parsed_response);
+        summarize_chat(hist, chat_summary, json_request, json_response, curl);
     }
 
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
     curl_global_cleanup();
     fclose(f);
+    free_history(hist);
     return EXIT_SUCCESS;
 }
 
@@ -128,8 +193,55 @@ void get_user_input(char *user_input){
     *user_input = '\0';
 }
 
-void build_prompt(char *prompt, char *user_input){
-    sprintf(prompt, "%s%s", PROMPT_INTRO, user_input);
+void build_prompt(char *prompt, char *user_input, char *chat_summary){
+    if(strcmp(chat_summary, "")){
+        sprintf(prompt, "Here is a summary of your conversation with the user: %s Answer as KAI: %s",chat_summary, user_input);
+    }else{
+        /* First interaction */
+        sprintf(prompt, "%s %s", PROMPT_INTRO, user_input);
+    }
+    printf("\n----->Prompted: %s\n", prompt);
+}
+
+void summarize_chat(History *h, char *chat_summary, char *json_request, char *json_response, CURL *curl){
+    /* Hacer un resumen igual es demasiado basto ya que para
+     * hacer el resumen le voy a tener que pasar toda la conversación
+     * a la IA y para eso se la paso directamente en el prompt.
+     *
+     * Puedo ir escribiendo resúmenes a partir del resúmen anterior y la nueva interacción. */
+    int i, size = 1024, needed;
+    char *chat, *role, *content;
+    char prompt[MAX_PROMPT];
+
+    chat = malloc(size * sizeof(char));
+    if(!chat){
+        return;
+    }
+
+    for(i = 0; i<h->count; i++){
+        role = h->msgs[i].role;
+        content = h->msgs[i].content;
+        printf("--Writing %s: %s", role, content);
+        needed = strlen(chat) + strlen(role) + strlen(content);
+        if(needed>size){
+            size *= 2;
+            chat = realloc(chat, size);
+        }
+        strcat(chat, " [");
+        strcat(chat, role);
+        strcat(chat, "]: ");
+        strcat(chat, content);
+    }
+
+    printf("Chat: %s\n", chat);
+
+    clean_string(chat);
+
+    sprintf(prompt, "%s %s. Do not introduce the answer. Start with the user...", SUM_INSTRUCTIONS, chat);
+
+    call_model(curl, json_request, prompt);
+    parse_response(json_response, chat_summary);
+    printf("Conversation sum: %s\n\n", chat_summary);
 }
 
 void clean_string(char *str){
