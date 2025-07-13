@@ -1,10 +1,10 @@
-#include <stdio.h>
 #include <curl/curl.h>
 #include "cJSON.h"
 #include "kai.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 /** TODO: 
  * Meter memoria (chat entero?, si es muy largo resumir)
@@ -66,6 +66,7 @@ void add_message(History *hist, char *role, char *content){
 
     hist->msgs[hist->count].role = strdup(role);
     hist->msgs[hist->count].content = strdup(content);
+    printf("Wrote message n %d\n", hist->count);
     hist->count++;
 }
 
@@ -218,10 +219,12 @@ void summarize_chat(History *h, char *chat_summary, char *json_request, char *js
         return;
     }
 
+    printf("BEFORE LOOP%d, %s\n", h->count, h->msgs[0].role);
     for(i = 0; i<h->count; i++){
+        printf("Por que hostias no va, %s, %s\n", h->msgs[i].role, h->msgs[i].content);
         role = h->msgs[i].role;
         content = h->msgs[i].content;
-        printf("--Writing %s: %s", role, content);
+        printf("--Writing %s: %s\n", role, content);
         needed = strlen(chat) + strlen(role) + strlen(content);
         if(needed>size){
             size *= 2;
@@ -232,6 +235,8 @@ void summarize_chat(History *h, char *chat_summary, char *json_request, char *js
         strcat(chat, "]: ");
         strcat(chat, content);
     }
+
+    printf("AFTER LOOP\n");
 
     printf("Chat: %s\n", chat);
 
@@ -258,7 +263,7 @@ CURL *init_model(char *json_request, char *json_response, struct curl_slist *hea
 
     api_token = getenv(API_KEY);
     if(!api_token){
-        fprintf(stderr, "Env variable %s not found", API_KEY);
+        fprintf(stderr, "Env variable %s not found\n", API_KEY);
         return NULL;
     }
     sprintf(auth_header, "Authorization: Bearer %s", api_token);
