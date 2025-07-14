@@ -43,7 +43,7 @@ void print_response(char *response);
 
 void add_to_history(char *user, char *response, FILE *f);
 
-void summarize_chat(History *h, char *chat_summary, char *json_request, char *json_response, CURL *curl);
+void summarize_chat(History *h, char **chat_summary, char *json_request, char *json_response, CURL *curl);
 
 void free_history(History *hist){
     int i;
@@ -55,6 +55,7 @@ void free_history(History *hist){
 }
 
 void add_message(History *hist, char *role, char *content){
+    int aux_size;
     if(hist->count >= hist->capacity){
         hist->capacity *= 2;
         hist->msgs = realloc(hist->msgs, hist->capacity * sizeof(Message));
@@ -64,9 +65,15 @@ void add_message(History *hist, char *role, char *content){
         }
     }
 
-    hist->msgs[hist->count].role = strdup(role);
-    hist->msgs[hist->count].content = strdup(content);
-    printf("Wrote message n %d\n", hist->count);
+    /* No va con strdup */
+    aux_size = strlen(role);
+    hist->msgs[hist->count].role = malloc((aux_size + 1) * sizeof(char));
+    hist->msgs[hist->count].role[aux_size] = '\0';
+    strcpy(hist->msgs[hist->count].role, role);
+    aux_size = strlen(content);
+    hist->msgs[hist->count].content = malloc((aux_size + 1) * sizeof(char));
+    hist->msgs[hist->count].content[aux_size] = '\0';
+    strcpy(hist->msgs[hist->count].content, content);
     hist->count++;
 }
 
@@ -83,7 +90,7 @@ int main(){
     char json_response[MAX_JSON];
     char json_request[MAX_JSON];
     char parsed_response[MAX_JSON];
-    char chat_summary[MAX_SUM] = "";
+    char *chat_summary = NULL;
 
     CURL *curl;
     CURLcode res;
@@ -130,10 +137,11 @@ int main(){
             fprintf(stderr, "Curl petition failed: %s\n", curl_easy_strerror(res));
             return EXIT_FAILURE;
         }
+        printf("\nJson response: %s\n\n", json_response);
         parse_response(json_response, parsed_response);
         print_response(parsed_response);
         add_message(hist, "KAI", parsed_response);
-        summarize_chat(hist, chat_summary, json_request, json_response, curl);
+        summarize_chat(hist, &chat_summary, json_request, json_response, curl);
     }
 
     curl_easy_cleanup(curl);
@@ -167,6 +175,8 @@ void parse_response(char *json_response, char *parsed_response){
         return;
     }
 
+    /* FIX: Creo que si la respuesta JSON tiene comillas se peta */
+
     first_choice = cJSON_GetArrayItem(choices, 0);
     message = cJSON_GetObjectItem(first_choice, "message");
     content = cJSON_GetObjectItem(message, "content");
@@ -195,16 +205,16 @@ void get_user_input(char *user_input){
 }
 
 void build_prompt(char *prompt, char *user_input, char *chat_summary){
-    if(strcmp(chat_summary, "")){
-        sprintf(prompt, "Here is a summary of your conversation with the user: %s Answer as KAI: %s",chat_summary, user_input);
+    if(chat_summary != NULL){
+        sprintf(prompt, "You are an AI named KAI. Here is your chat with the user: %s Answer as KAI: %s",chat_summary, user_input);
     }else{
         /* First interaction */
         sprintf(prompt, "%s %s", PROMPT_INTRO, user_input);
     }
-    printf("\n----->Prompted: %s\n", prompt);
+    printf("\n----->Prompted: %s\n\n", prompt);
 }
 
-void summarize_chat(History *h, char *chat_summary, char *json_request, char *json_response, CURL *curl){
+void summarize_chat(History *h, char **chat_summary, char *json_request, char *json_response, CURL *curl){
     /* Hacer un resumen igual es demasiado basto ya que para
      * hacer el resumen le voy a tener que pasar toda la conversación
      * a la IA y para eso se la paso directamente en el prompt.
@@ -219,12 +229,11 @@ void summarize_chat(History *h, char *chat_summary, char *json_request, char *js
         return;
     }
 
-    printf("BEFORE LOOP%d, %s\n", h->count, h->msgs[0].role);
+    sprintf(chat, "");
+
     for(i = 0; i<h->count; i++){
-        printf("Por que hostias no va, %s, %s\n", h->msgs[i].role, h->msgs[i].content);
         role = h->msgs[i].role;
         content = h->msgs[i].content;
-        printf("--Writing %s: %s\n", role, content);
         needed = strlen(chat) + strlen(role) + strlen(content);
         if(needed>size){
             size *= 2;
@@ -236,17 +245,18 @@ void summarize_chat(History *h, char *chat_summary, char *json_request, char *js
         strcat(chat, content);
     }
 
-    printf("AFTER LOOP\n");
-
-    printf("Chat: %s\n", chat);
-
     clean_string(chat);
+    
+    if(*chat_summary != NULL) free(*chat_summary);
+    *chat_summary = malloc((strlen(chat) +1 ) * sizeof(char));
+    strcpy(*chat_summary, chat);
+    /** Subimos todo el chat 
 
-    sprintf(prompt, "%s %s. Do not introduce the answer. Start with the user...", SUM_INSTRUCTIONS, chat);
+    sprintf(prompt, "%s %s. No introduction.", SUM_INSTRUCTIONS, chat);
 
     call_model(curl, json_request, prompt);
     parse_response(json_response, chat_summary);
-    printf("Conversation sum: %s\n\n", chat_summary);
+    */
 }
 
 void clean_string(char *str){
