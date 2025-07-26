@@ -228,6 +228,7 @@ void summarize_chat(History *h, char **chat_summary, char *json_request, char *j
     if(!chat){
         return;
     }
+    chat[0] = '\0';
 
     sprintf(chat, "");
 
