@@ -7,7 +7,9 @@
 #include <stdio.h>
 
 /** TODO: 
+ * Quitar lo de resumir. String de history que tenga todo el chat?
  * Meter memoria (chat entero?, si es muy largo resumir)
+ * Load prompts from a config file
  */
 
 typedef struct{
@@ -23,8 +25,7 @@ typedef struct{
 
 void clean_string(char *str);
 
-size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp){
-    size_t total = size * nmemb;
+size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp){ size_t total = size * nmemb;
     snprintf((char *)userp, total, "%s", (char*)contents);
     return total;
 }
@@ -43,7 +44,10 @@ void print_response(char *response);
 
 void add_to_history(char *user, char *response, FILE *f);
 
-void summarize_chat(History *h, char **chat_summary, char *json_request, char *json_response, CURL *curl);
+/**
+ * Loads in chat_buffer MAX_MSGS messages from the history
+ */
+void load_chat(History *h, char **chat_buffer);
 
 void free_history(History *hist){
     int i;
@@ -90,7 +94,7 @@ int main(){
     char json_response[MAX_JSON];
     char json_request[MAX_JSON];
     char parsed_response[MAX_JSON];
-    char *chat_summary = NULL;
+    char *chat_buffer = NULL;
 
     CURL *curl;
     CURLcode res;
@@ -131,7 +135,7 @@ int main(){
     while(strcmp(user_input, "exit")){
         get_user_input(user_input);
         add_message(hist, "USER", user_input);
-        build_prompt(prompt, user_input, chat_summary);
+        build_prompt(prompt, user_input, chat_buffer);
         res = call_model(curl, json_request, prompt);
         if(res != CURLE_OK){
             fprintf(stderr, "Curl petition failed: %s\n", curl_easy_strerror(res));
@@ -141,7 +145,7 @@ int main(){
         parse_response(json_response, parsed_response);
         print_response(parsed_response);
         add_message(hist, "KAI", parsed_response);
-        summarize_chat(hist, &chat_summary, json_request, json_response, curl);
+        load_chat(hist, &chat_buffer);
     }
 
     curl_easy_cleanup(curl);
@@ -206,7 +210,7 @@ void get_user_input(char *user_input){
 
 void build_prompt(char *prompt, char *user_input, char *chat_summary){
     if(chat_summary != NULL){
-        sprintf(prompt, "You are an AI named KAI. Here is your chat with the user: %s Answer as KAI: %s",chat_summary, user_input);
+        sprintf(prompt, "You are an AI named KAI. Here is your chat with the user: %s [USER]: %s",chat_summary, user_input);
     }else{
         /* First interaction */
         sprintf(prompt, "%s %s", PROMPT_INTRO, user_input);
@@ -214,15 +218,9 @@ void build_prompt(char *prompt, char *user_input, char *chat_summary){
     printf("\n----->Prompted: %s\n\n", prompt);
 }
 
-void summarize_chat(History *h, char **chat_summary, char *json_request, char *json_response, CURL *curl){
-    /* Hacer un resumen igual es demasiado basto ya que para
-     * hacer el resumen le voy a tener que pasar toda la conversación
-     * a la IA y para eso se la paso directamente en el prompt.
-     *
-     * Puedo ir escribiendo resúmenes a partir del resúmen anterior y la nueva interacción. */
-    int i, size = 1024, needed;
+void load_chat(History *h, char **chat_buffer){
+    int i, size = 1024, needed, start;
     char *chat, *role, *content;
-    char prompt[MAX_PROMPT];
 
     chat = malloc(size * sizeof(char));
     if(!chat){
@@ -230,13 +228,13 @@ void summarize_chat(History *h, char **chat_summary, char *json_request, char *j
     }
     chat[0] = '\0';
 
-    sprintf(chat, "");
+    start = (h->count > MAX_MSGS)? h->count - MAX_MSGS: 0;
 
-    for(i = 0; i<h->count; i++){
+    for(i = start; i<h->count; i++){
         role = h->msgs[i].role;
         content = h->msgs[i].content;
         needed = strlen(chat) + strlen(role) + strlen(content);
-        if(needed>size){
+        while(needed>size){
             size *= 2;
             chat = realloc(chat, size);
         }
@@ -246,18 +244,13 @@ void summarize_chat(History *h, char **chat_summary, char *json_request, char *j
         strcat(chat, content);
     }
 
+    printf("----Chat %d----\n%s\n------------\n", h->count, chat);
+
     clean_string(chat);
     
-    if(*chat_summary != NULL) free(*chat_summary);
-    *chat_summary = malloc((strlen(chat) +1 ) * sizeof(char));
-    strcpy(*chat_summary, chat);
-    /** Subimos todo el chat 
-
-    sprintf(prompt, "%s %s. No introduction.", SUM_INSTRUCTIONS, chat);
-
-    call_model(curl, json_request, prompt);
-    parse_response(json_response, chat_summary);
-    */
+    if(*chat_buffer != NULL) free(*chat_buffer);
+    *chat_buffer = malloc((strlen(chat) +1 ) * sizeof(char));
+    strcpy(*chat_buffer, chat);
 }
 
 void clean_string(char *str){
