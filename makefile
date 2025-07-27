@@ -8,6 +8,9 @@ OBJS = kai.o cJSON.o
 
 all: $(EXE)
 
+debug: CFLAGS += -DDEBUG
+debug: clean $(EXE)
+
 $(EXE): $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(CLIBS)
 

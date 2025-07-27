@@ -6,12 +6,6 @@
 #include <string.h>
 #include <stdio.h>
 
-/** TODO: 
- * Quitar lo de resumir. String de history que tenga todo el chat?
- * Meter memoria (chat entero?, si es muy largo resumir)
- * Load prompts from a config file
- */
-
 typedef struct{
     char *role;
     char *content;
@@ -127,14 +121,6 @@ int main(){
         return EXIT_FAILURE;
     }
 
-    f = fopen(HIST_FILENAME, "r+");
-    if(!f){
-        perror("Error opening history file");
-        curl_easy_cleanup(curl);
-        curl_slist_free_all(headers);
-        curl_global_cleanup();
-        return EXIT_FAILURE;
-    }
 
     while(strcmp(user_input, "exit")){
         get_user_input(user_input);
@@ -145,7 +131,9 @@ int main(){
             fprintf(stderr, "Curl petition failed: %s\n", curl_easy_strerror(res));
             return EXIT_FAILURE;
         }
+#ifdef DEBUG
         printf("\nJson response: %s\n\n", json_response);
+#endif
         if(parse_response(json_response, parsed_response) == EXIT_FAILURE){
             print_error(parsed_response);
             break;
@@ -155,10 +143,14 @@ int main(){
         load_chat(hist, &chat_buffer);
     }
 
+    printf("\nSave chat? (y/n)\n");
+    fgets(user_input, MAX_USR_INPUT, stdin);
+    /** TODO: GUARDAR CONVERSACIÓN
+    *user_input = '\0';
+
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
     curl_global_cleanup();
-    fclose(f);
     free_history(hist);
     return EXIT_SUCCESS;
 }
@@ -219,12 +211,14 @@ void get_user_input(char *user_input){
 
 void build_prompt(char *prompt, char *user_input, char *chat_summary){
     if(chat_summary != NULL){
-        sprintf(prompt, "You are an AI named KAI. Here is your chat with the user: %s [USER]: %s",chat_summary, user_input);
+        sprintf(prompt, "%s %s [USER]: %s [KAI]: ",PROMPT_INTRO, chat_summary, user_input);
     }else{
         /* First interaction */
         sprintf(prompt, "%s %s", PROMPT_INTRO, user_input);
     }
+#ifdef DEBUG
     printf("\n----->Prompted: %s\n\n", prompt);
+#endif
 }
 
 void load_chat(History *h, char **chat_buffer){
@@ -253,7 +247,9 @@ void load_chat(History *h, char **chat_buffer){
         strcat(chat, content);
     }
 
+#ifdef DEBUG
     printf("----Chat %d----\n%s\n------------\n", h->count, chat);
+#endif
 
     clean_string(chat);
     
@@ -264,7 +260,7 @@ void load_chat(History *h, char **chat_buffer){
 
 void clean_string(char *str){
     while(*str != '\0'){
-        if(*str == '\n') *str = ' ';
+        if(*str == '\n' || *str == '"') *str = ' ';
         str++;
     }
 }

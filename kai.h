@@ -13,10 +13,9 @@
 #define MAX_JSON 4096
 #define MAX_SUM 2048
 #define AUTH_HEADER_SIZE 256
-#define MAX_MSGS 3
+#define MAX_MSGS 30
 
-#define PROMPT_INTRO "You are an AI named KAI:"
-#define SUM_INSTRUCTIONS "Your task is to summarize this conversation between an AI assistant named KAI and its user. Focus on user's interests and information. Write a short summary all in the same line:"
+#define PROMPT_INTRO "You are an AI named KAI. Complete this chat with the user:"
 
 /* COLORS: */
 #define RESET "\033[0m"
