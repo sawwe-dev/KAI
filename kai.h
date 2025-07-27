@@ -21,6 +21,7 @@
 /* COLORS: */
 #define RESET "\033[0m"
 #define GREEN "\033[32m"
+#define RED "\033[91m"
 
 #define INIT_HIST_CAP 8
 

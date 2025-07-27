@@ -38,7 +38,7 @@ CURL *init_model(char *json_request, char *json_response, struct curl_slist *hea
 
 CURLcode call_model(CURL *curl, char *json_request, char *prompt);
 
-void parse_response(char *json_response, char *parsed_response);
+int parse_response(char *json_response, char *parsed_response);
 
 void print_response(char *response);
 
@@ -48,6 +48,10 @@ void add_to_history(char *user, char *response, FILE *f);
  * Loads in chat_buffer MAX_MSGS messages from the history
  */
 void load_chat(History *h, char **chat_buffer);
+
+void print_error(char *error_msg){
+    printf("%sREQUEST ERROR: %s%s\n", RED, error_msg, RESET);
+}
 
 void free_history(History *hist){
     int i;
@@ -142,7 +146,10 @@ int main(){
             return EXIT_FAILURE;
         }
         printf("\nJson response: %s\n\n", json_response);
-        parse_response(json_response, parsed_response);
+        if(parse_response(json_response, parsed_response) == EXIT_FAILURE){
+            print_error(parsed_response);
+            break;
+        }
         print_response(parsed_response);
         add_message(hist, "KAI", parsed_response);
         load_chat(hist, &chat_buffer);
@@ -164,22 +171,23 @@ void print_response(char *response){
     printf("%s> %s %s\n", GREEN, response, RESET);
 }
 
-void parse_response(char *json_response, char *parsed_response){
+int parse_response(char *json_response, char *parsed_response){
     cJSON *root, *first_choice, *message, *content, *choices;
     root = cJSON_Parse(json_response);
     if (!root) {
         printf("JSON parse error\n");
-        return;
+        return EXIT_FAILURE;
     }
 
     choices = cJSON_GetObjectItem(root, "choices");
     if (!cJSON_IsArray(choices)) {
-        printf("Invalid JSON: 'choices' is not an array\n");
+        choices = cJSON_GetObjectItem(root, "error");
+        message = cJSON_GetObjectItem(choices, "message");
+        if(cJSON_IsString(message)) 
+            strcpy(parsed_response, message->valuestring);
         cJSON_Delete(root);
-        return;
+        return EXIT_FAILURE;
     }
-
-    /* FIX: Creo que si la respuesta JSON tiene comillas se peta */
 
     first_choice = cJSON_GetArrayItem(choices, 0);
     message = cJSON_GetObjectItem(first_choice, "message");
@@ -190,6 +198,7 @@ void parse_response(char *json_response, char *parsed_response){
     }
 
     cJSON_Delete(root);
+    return EXIT_SUCCESS;
 }
 
 CURLcode call_model(CURL *curl, char *json_request, char *prompt){
