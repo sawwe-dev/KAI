@@ -8,12 +8,17 @@
 #define HIST_FILENAME "chats/example.chat"
 #define PROMPTS_FILENAME ".config/prompts.json"
 
+typedef enum _bool{NO, YES} Bool;
+
 #define MAX_USR_INPUT 1024
 #define MAX_PROMPT 2048
 #define MAX_JSON 4096
 #define MAX_SUM 2048
 #define AUTH_HEADER_SIZE 256
 #define MAX_MSGS 30
+#define MAX_EXT 10
+#define MAX_FILENAME 64
+#define SHORT_ANSW 16
 
 #define PROMPT_INTRO "You are an AI named KAI. Complete this chat with the user:"
 

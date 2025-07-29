@@ -19,6 +19,14 @@ typedef struct{
 
 void clean_string(char *str);
 
+Bool ask_usr(char *str){
+    char usr[SHORT_ANSW];
+    printf("[SYSTEM] %s [y/n]: ", str);
+    fgets(usr, SHORT_ANSW, stdin);
+    if(usr[0] == 'Y' || usr[0] == 'y') return YES;
+    return NO;
+}
+
 size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp){ size_t total = size * nmemb;
     snprintf((char *)userp, total, "%s", (char*)contents);
     return total;
@@ -79,11 +87,117 @@ void add_message(History *hist, char *role, char *content){
     hist->count++;
 }
 
-void dump_history(History *h, FILE *f){
+void dump_history(History *h){
+    FILE *f;
     int i;
-    for(i = 0; i<h->count; i++){
-        fprintf(f, "[%s]: %s", h->msgs[i].role, h->msgs[i].content);
+    char filename[MAX_USR_INPUT], aux[MAX_FILENAME];
+    
+    printf("Name of the file to save the chat: ");
+    fgets(aux, MAX_FILENAME, stdin);
+
+    i = 0;
+    while(aux[i] != '\n'){
+        i++;
     }
+    aux[i] = '\0';
+
+    sprintf(filename, "chats/%s", aux);
+
+    f = fopen(filename, "w");
+    if(!f){
+        perror("Error opening file");
+        return;
+    }
+
+    for(i = 0; i<h->count; i++){
+        fprintf(f, "[%s]: %s\n", h->msgs[i].role, h->msgs[i].content);
+    }
+
+    fclose(f);
+}
+
+void parse_code(char *parsed_response){
+    int len, i, j, start, end;
+    char ext[MAX_EXT];
+
+    char filename[MAX_USR_INPUT], aux[MAX_FILENAME];
+    FILE *f;
+
+    len = strlen(parsed_response);
+    /* -6 cos code cant be the last 6 chars */
+    for(i = 0, start = -1; i<len-6; i++){
+        if(parsed_response[i] == '`' && parsed_response[i+1] == '`' && parsed_response[i+2] == '`'){
+            /* md code found */
+            start = i;
+            break;
+        }
+    }
+
+    if(start == -1){
+        /* No code found */
+        printf("No code found \n");
+        return;
+    }
+
+    for(i = start+3, end = -1; i<len; i++){
+        if(parsed_response[i] == '`' && parsed_response[i+1] == '`' && parsed_response[i+2] == '`'){
+            /* Code end */
+            end = i;
+            break;
+        }
+    }
+
+    if(end == -1){
+        /* No code end (impossible) */
+        printf("No code end found \n");
+        return;
+    }
+
+    j = 0;
+    i = start + 3;
+    while(parsed_response[i] != '\n' && j < MAX_EXT){
+        ext[j] = parsed_response[i];
+        i++;
+        j++;
+    }
+    if(j >= MAX_EXT){
+        printf("Code extension exceedes extension limit");
+        return;
+    }
+    ext[j] = '\0';
+    start = i+1; /* First char of code */
+
+    printf("\nFound code of extension %s from %d to %d, first char : %c\n", ext, start, end, parsed_response[start]);
+
+    if(ask_usr("Code founded in response. Extract code to file?") == NO){
+        return;
+    }
+
+    /* Extract code to file */
+    printf("Name of the file to extract the code: ");
+    fgets(aux, MAX_FILENAME, stdin);
+
+    i = 0;
+    while(aux[i] != '\n'){
+        i++;
+    }
+    aux[i] = '\0';
+
+    sprintf(filename, "code/%s", aux);
+
+    printf("Writing code into %s\n", filename);
+
+    f = fopen(filename, "w");
+    if(!f){
+        perror("Error opening file");
+        return;
+    }
+
+    for(i = start; i<end; i++){
+        fputc(parsed_response[i], f);
+    }
+
+    fclose(f);
 }
 
 int main(){
@@ -97,8 +211,6 @@ int main(){
     CURL *curl;
     CURLcode res;
     struct curl_slist *headers = NULL;
-
-    FILE *f;
 
     History *hist;
 
@@ -139,14 +251,15 @@ int main(){
             break;
         }
         print_response(parsed_response);
+        parse_code(parsed_response);
         add_message(hist, "KAI", parsed_response);
         load_chat(hist, &chat_buffer);
     }
 
-    printf("\nSave chat? (y/n)\n");
-    fgets(user_input, MAX_USR_INPUT, stdin);
-    /** TODO: GUARDAR CONVERSACIÓN
-    *user_input = '\0';
+    printf("\nSave chat? (y/n): ");
+    if(ask_usr("Save chat?") == YES){
+        dump_history(hist);
+    }
 
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
