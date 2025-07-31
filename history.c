@@ -20,7 +20,6 @@ int load_from_file(char *filename, History *hist){
     }
     while(fgets(buf, sizeof(buf), f)){
         /* Si la linea empieza con [ es un nuevo mensaje */
-        printf("%d- Read line: %s", strstr(buf, "]: ") != NULL, buf);
         if(buf[0] == '[' && strstr(buf, "]: ")){
             if(usr && msg){
                 /* Guardamos el anterior */
@@ -141,7 +140,7 @@ void load_chat(History *h, char **chat_buffer){
     for(i = start; i<h->count; i++){
         role = h->msgs[i].role;
         content = h->msgs[i].content;
-        needed = strlen(chat) + strlen(role) + strlen(content);
+        needed = strlen(chat) + strlen(role) + strlen(content) + 4;
         while(needed>size){
             size *= 2;
             chat = realloc(chat, size);

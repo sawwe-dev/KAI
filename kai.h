@@ -1,7 +1,7 @@
 #ifndef KAI_H
 #define KAI_H
 
-#define HIST_FILENAME "chats/example.chat"
+#define HIST_FILENAME "chats/"
 
 typedef enum _bool{NO, YES} Bool;
 

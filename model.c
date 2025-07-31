@@ -6,29 +6,38 @@
 #include "cJSON.h"
 #include "model.h"
 
+#define MAX_PROMPT 2048
+
 size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp){ 
     size_t total = size * nmemb;
     snprintf((char *)userp, total, "%s", (char*)contents);
     return total;
 }
 
-void build_prompt(char *prompt, char *user_input, char *chat_summary){
+void build_prompt(GrowStr *prompt, char *user_input, char *chat_summary){
+    unsigned int exp_size;
+
+    exp_size = strlen(user_input) + strlen(PROMPT_INTRO) + 64;
+    if(chat_summary != NULL) exp_size += strlen(chat_summary);
+
+    while(exp_size >= prompt->cap){
+        prompt->cap *= 2;
+        prompt->str = realloc(prompt->str, prompt->cap);
+        if(!prompt->str) return;
+    }
+
     if(chat_summary != NULL){
-        sprintf(prompt, "%s %s. And here is the last user message: %s. Answer",PROMPT_INTRO, chat_summary, user_input);
+        sprintf(prompt->str, "%s %s. And here is the last user message: %s. Answer",PROMPT_INTRO, chat_summary, user_input);
     }else if(!strcmp(user_input, "exit")){
         printf("EXITING\n");
-        sprintf(prompt, "%s %s. User says bye. Say bye to the user.", PROMPT_INTRO, chat_summary);
+        sprintf(prompt->str, "%s %s. User says bye. Say bye to the user.", PROMPT_INTRO, chat_summary);
     } else{
         /* First interaction */
-        sprintf(prompt, "%s %s", PROMPT_INTRO, user_input);
+        sprintf(prompt->str, "%s %s", PROMPT_INTRO, user_input);
     }
 #ifdef DEBUG
     printf("\n----->Prompted: %s\n\n", prompt);
 #endif
-    if(strlen(prompt) > MAX_PROMPT){
-        printf("ERROR, size exceeded.\n");
-        exit(0);
-    }
 }
 
 CURL *init_model(char *json_request, char *json_response, struct curl_slist **headers){
@@ -62,9 +71,21 @@ CURL *init_model(char *json_request, char *json_response, struct curl_slist **he
     return curl;
 }
 
-CURLcode call_model(CURL *curl, char *json_request, char *prompt){
+CURLcode call_model(CURL *curl, GrowStr *json_request, char *prompt){
     CURLcode res;
-    sprintf(json_request, "{\"model\": \"%s\", \"messages\": [{\"role\": \"user\", \"content\": \"%s\"}]}", AI_MODEL, prompt);
+    unsigned int exp_size;
+
+    exp_size = strlen(AI_MODEL) + strlen(prompt) + 64;
+
+    while(exp_size >= json_request->cap){
+        json_request->cap *=2;
+        free(json_request->str);
+        json_request->str = malloc(sizeof(char) * json_request->cap);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_request->str);
+        if(!json_request->str) return EXIT_FAILURE;
+    }
+
+    sprintf(json_request->str, "{\"model\": \"%s\", \"messages\": [{\"role\": \"user\", \"content\": \"%s\"}]}", AI_MODEL, prompt);
     res = curl_easy_perform(curl);
     return res;
 }

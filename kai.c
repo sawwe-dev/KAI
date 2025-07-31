@@ -21,11 +21,23 @@ void parse_code(char *parsed_response);
 
 void print_error(char *error_msg);
 
+int quick_ask(char *question, CURL *curl, GrowStr *json_request, char *json_response){
+    char prompt[4056], parsed_response[4056];
+
+    sprintf(prompt, "You are an AI code assistant. Your goal is to give objective, technical and concise responses to user questions. Do not be kind, do not introduce answers. Just give information. Here is users petition: %s", question);
+
+    call_model(curl, json_request, prompt);
+    parse_response(json_response, parsed_response);
+
+    printf("%s\n", parsed_response);
+
+    return EXIT_SUCCESS;
+}
+
 int main(int argc, char *argv[]){
     char user_input[MAX_USR_INPUT] = "";
-    char *prompt;
+    GrowStr prompt, json_request;
     char json_response[MAX_JSON];
-    char json_request[MAX_JSON];
     char parsed_response[MAX_JSON];
     char *chat_buffer = NULL;
 
@@ -37,8 +49,16 @@ int main(int argc, char *argv[]){
 
     History *hist;
 
-    prompt = malloc(sizeof(char) * INIT_PROMPT);
-    if(!prompt){
+    prompt.str = malloc(sizeof(char) * INIT_PROMPT);
+    prompt.cap = INIT_PROMPT;
+    if(!prompt.str){
+        return EXIT_FAILURE;
+    }
+
+    /* Extract into interface? */
+    json_request.str = malloc(sizeof(char) * INIT_PROMPT);
+    json_request.cap = INIT_PROMPT;
+    if(!json_request.str){
         return EXIT_FAILURE;
     }
 
@@ -56,19 +76,21 @@ int main(int argc, char *argv[]){
         return EXIT_FAILURE;
     }
 
-    curl = init_model(json_request, json_response, &headers);
+    curl = init_model(json_request.str, json_response, &headers);
     if(!curl){
         return EXIT_FAILURE;
     }
 
     if(argc > 0){
-        while((opt = getopt(argc, argv, "l:")) != -1){
+        while((opt = getopt(argc, argv, "a:l:")) != -1){
             switch(opt){
                 case 'l':
                     /* Load chat from file */
                     load_from_file(optarg, hist);
                     load_chat(hist, &chat_buffer);
                     break;
+                case 'a':
+                    return quick_ask(optarg, curl, &json_request, json_response);
                 case '?':
                     /* Undetermined */
                     break;
@@ -79,9 +101,8 @@ int main(int argc, char *argv[]){
     while(strcmp(user_input, "exit")){
         get_user_input(user_input);
         add_message(hist, "USER", user_input);
-        build_prompt(prompt, user_input, chat_buffer);
-        printf("Prompt size: %zu\n\n", strlen(prompt));
-        res = call_model(curl, json_request, prompt);
+        build_prompt(&prompt, user_input, chat_buffer);
+        res = call_model(curl, &json_request, prompt.str);
         if(res != CURLE_OK){
             fprintf(stderr, "Curl petition failed: %s\n", curl_easy_strerror(res));
             return EXIT_FAILURE;
@@ -91,7 +112,7 @@ int main(int argc, char *argv[]){
 #endif
         if(parse_response(json_response, parsed_response) == EXIT_FAILURE){
             print_error(parsed_response);
-            printf("Json request: %s\nJson response: %s\n", json_request, json_response);
+            printf("Json request: %s\nJson response: %s\n", json_request.str, json_response);
             break;
         }
         print_response(parsed_response);
@@ -109,7 +130,8 @@ int main(int argc, char *argv[]){
     curl_slist_free_all(headers);
     curl_global_cleanup();
     free_history(hist);
-    free(prompt);
+    free(prompt.str);
+    free(json_request.str);
     return EXIT_SUCCESS;
 }
 

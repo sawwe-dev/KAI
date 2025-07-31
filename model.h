@@ -9,7 +9,7 @@
 #define API_URL "https://router.huggingface.co/groq/openai/v1/chat/completions"
 
 #define AUTH_HEADER_SIZE 256
-#define INIT_PROMPT 1024 
+#define INIT_PROMPT 256
 #define MAX_JSON 4096
 #define MAX_SUM 2048
 
@@ -17,16 +17,16 @@
 
 typedef struct{
     char *str;
-    int cap;
+    unsigned int cap;
 } GrowStr;
 
 size_t write_callback(void *contents, size_t size, size_t nmemb, void *userp);
 
-void build_prompt(char *prompt, char *user_input, char *chat_summary);
+void build_prompt(GrowStr *prompt, char *user_input, char *chat_summary);
 
 CURL *init_model(char *json_request, char *json_response, struct curl_slist **headers);
 
-CURLcode call_model(CURL *curl, char *json_request, char *prompt);
+CURLcode call_model(CURL *curl, GrowStr *json_request, char *prompt);
 
 int parse_response(char *json_response, char *parsed_response);
 
