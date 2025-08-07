@@ -28,6 +28,11 @@ int quick_ask(char *question, CURL *curl, GrowStr *json_request, char *json_resp
 
     call_model(curl, json_request, prompt);
     parse_response(json_response, parsed_response);
+    if(parse_response(json_response, parsed_response) == EXIT_FAILURE){
+        print_error(parsed_response);
+        printf("Json request: %s\nJson response: %s\n", json_request->str, json_response);
+        return EXIT_FAILURE;
+    }
 
     printf("%s\n", parsed_response);
 
